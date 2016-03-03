@@ -3,18 +3,11 @@
 import os, sys
 import time
 
-class Interrupt:
-    def __init__(self, id, name, n):
-        self.id = id
-        self.name = name
-        self.n = n
-
 def interrupt_load():
     result = []
     with open('/proc/interrupts') as f:
         headstr = f.readline()
         header = ['id'] + headstr.split() + ['desc']
-        print header
 
         cores = len(header) - 2
         while True:
@@ -23,23 +16,27 @@ def interrupt_load():
                 break
             row = line.strip().split(None, 2)
             row[0] = row[0].strip(':')
-            print row
             result.append(row)
     return result
 
-class CPUCore:
-    def __init__(self, user, nice, system, idle,
-            iowait, irq, intr):
-        self.user = user
-        self.nice = nice
-        self.system = system
-        self.idle = idle
-        self.iowait = iowait
-        self.irq = irq
-        self.intr = intr
+
+def cpu_load():
+    fields = ['name', 'user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq']
+
+    result = []
+    result.append(fields)
+    with open('/proc/stat') as f:
+        lines = f.readlines()
+        for ln in lines:
+            if ln.startswith('cpu'):
+                result.append(ln.strip().split())
+
+    return
 
 
-def cpu_load(pid):
+
+
+def proc_cpu_load(pid):
     fields = [['pid', 0], ['comm', 1], ['task_state', 2], 
               ['min_flt', 9], ['cmin_flt', 10], ['maj_flt', 11], ['cmaj_flt', 12], 
               ['utime', 13], ['stime', 14], ['cutime', 15], ['cstime', 16], 
@@ -53,91 +50,120 @@ def cpu_load(pid):
         for f in fields:
             row.append(p[f[1]])
         result.append(row)
-    print result
+    return result
+
+def mem_load():
+    view_fields = ['MemTotal','MemFree','Buffers','Cached','SwapTotal','SwapFree','Mapped','Shmem','Slab']
+    result = []
+    with open('/proc/meminfo') as f:
+        lines = f.readlines()
+        
+        fields = []
+        row = []
+        for ln in lines: 
+            p = ln.strip().split()
+            k = p[0].strip(':')
+            if k in view_fields:
+                fields.append(k)
+                row.append(int(p[1])*1024)
+    result.append(fields)
+    result.append(row)
     return result
 
 
-class Mem:
-    def __init__(self, res):
-        self.res = res
 
 
-def mem_load(pid):
-    pass
+def proc_mem_load(pid):
+    result = [['res'], ]
+    with open('/proc/%d/statm' % int(pid)) as f:
+        p = f.readline().strip().split()
+        row = int(p[1])*4096
+        result.append([row])
+    return result
 
-
-
-class DiskIO:
-    def __init__(self, rchar, wchar, syscr, syscw,
-            read_bytes, write_bytes, cancelled_write_bytes):
-        self.rchar = rchar
-        self.wchar = wchar
-        self.syscr = syscr
-        self.syscw = syscw
-        self.read_bytes = read_bytes
-        self.write_bytes = write_bytes
-        self.cancelled_write_bytes = cancelled_write_bytes
 
 
 def diskio_load():
-    pass
-
-class NetIO:
-    def __init__(self, interface, recv_bytes, recv_packets, 
-            recv_errs, recv_drop, recv_fifo, recv_frame,
-            recv_compressed, recv_multicast,
-            send_bytes, send_packets, send_errs,
-            send_drop, send_fifo, send_frame,
-            send_compressed, send_multicast):
-
-        self.interface = interface
-        self.recv_bytes = recv_bytes
-        self.recv_packets = recv_packets 
-        self.recv_errs = recv_errs
-        self.recv_drop = recv_drop 
-        self.recv_fifo = recv_fifo 
-        self.recv_frame = recv_frame
-        self.recv_compressed = recv_compressed 
-        self.recv_multicast = recv_multicast
-        self.send_bytes = send_bytes 
-        self.send_packets = send_packets 
-        self.send_errs = send_errs
-        self.send_drop = send_drop 
-        self.send_fifo = send_fifo 
-        self.send_frame = send_frame
-        self.send_compressed = send_compressed 
-        self.send_multicast = send_multicast
-
-def netio_load():
-    pass
+    fields = ['name', 'rio', 'rmerge', 'rsect', 'ruse', 'wio', 'wmerge', 'wsect', 'wuse', 'running', 'use', 'aveq']
+    result = [fields]
+    with open('/proc/diskstats') as f:
+        lines = f.readlines()
+        for ln in lines:
+            row = ln.strip().split()[2:]
+            if int(row[1]) + int(row[5]) == 0:
+                continue
+            result.append(row)
+    return result
 
 
-class DataRow:
-    def __init__(self, fd, cpu, mem, diskio, netio):
-        self.time = time.time()
-        self.fd = fd
-        self.cpu = cpu
-        self.mem = mem
-        self.diskio = diskio
-        self.netio = netio
+def proc_diskio_load(pid):
+    result = []
+    with open('/proc/%d/io' % int(pid)) as f:
+        lines = f.readlines()
+        header = []
+        row = []
 
+        for ln in lines:
+            p = ln.strip().split()
+            header.append(p[0].strip(':'))
+            row.append(p[1]) 
+        result.append(header)
+        result.append(row)
+    return result
+        
 
+def netio_load(pid=None):
+    result = []
+    filename = '/proc/net/dev'
+    if pid:
+        filename = '/proc/%d/net/dev' % (int(pid))
+    with open('/proc/net/dev') as f:
+        lines = f.readlines()
+        p = lines[1].strip().split('|') 
+        p2 = p[1].split()
+        header = ['interface'] + ['recv_'+x for x in p2] + ['send_'+x for x in p2]
+        
+        result.append(header)
+        n = len(header)-1
+        for x in lines[2:]:
+            p = x.strip().split()
+            row = p
+            row[0] = row[0].strip(':')
+            result.append(row)
+    return result
 
+def proc_netio_load(pid):
+    return netio_load(pid)
+ 
 
-class Proc:
-    def __init__(self, pid, count, rows):
-        self.pid = pid
-        self.count = count
-        self.data = rows
+def main(pid):
+    data = {
+        'interrupt': interrupt_load(),
+        'cpu': cpu_load(),
+        'pcpu': proc_cpu_load(pid),
+        'mem': mem_load(),
+        'pmem': proc_mem_load(pid),
+        'diskio': diskio_load(),
+        'pdiskio': proc_diskio_load(pid),
+        'netio': netio_load(),
+        'pnetid': proc_netio_load(pid),
+    }
 
 
 
 if __name__ == '__main__':
+    import pprint
     x = globals()[sys.argv[1]]
     if len(sys.argv) > 2:
-        x(*sys.argv[2:])
+        ret = x(*sys.argv[2:])
     else:
-        x()
+        ret = x()
+
+    head = ret[0]
+    for x in ret[1:]:
+        pprint.pprint(dict(zip(head, x)))
+
+
 
 
 
