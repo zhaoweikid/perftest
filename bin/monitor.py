@@ -2,21 +2,26 @@
 # coding: utf-8 
 import os, sys
 import time
+import json
 
 def interrupt_load():
     result = []
     with open('/proc/interrupts') as f:
         headstr = f.readline()
-        header = ['id'] + headstr.split() + ['desc']
+        header = ['name'] + headstr.split()
+        result.append(header)
+        cores = len(header) - 1
 
-        cores = len(header) - 2
-        while True:
-            line = f.readline()
-            if not line:
-                break
-            row = line.strip().split(None, 2)
-            row[0] = row[0].strip(':')
-            result.append(row)
+        lines = f.readlines()
+        for line in lines:
+            p = line.strip().split()
+            row = []
+            row.append(p[0].strip(':'))
+
+            for i in range(1, cores+1):
+                if len(p) > i:
+                     row.append(int(p[i]))
+            result.append(row) 
     return result
 
 
@@ -29,9 +34,12 @@ def cpu_load():
         lines = f.readlines()
         for ln in lines:
             if ln.startswith('cpu'):
-                result.append(ln.strip().split())
-
-    return
+                p = ln.strip().split()
+                row = []
+                row.append(p[0])
+                row += [ int(x) for x in p[1:]]
+                result.append(row)
+    return result
 
 
 
@@ -48,7 +56,10 @@ def proc_cpu_load(pid):
         p = f.readline().strip().split()
         row = []
         for f in fields:
-            row.append(p[f[1]])
+            if f[0] in ('comm', 'task_state'):
+                row.append(p[f[1]])
+            else:
+                row.append(int(p[f[1]]))
         result.append(row)
     return result
 
@@ -92,7 +103,7 @@ def diskio_load():
             row = ln.strip().split()[2:]
             if int(row[1]) + int(row[5]) == 0:
                 continue
-            result.append(row)
+            result.append([row[0]] + [ int(x) for x in row[1:]])
     return result
 
 
@@ -106,7 +117,7 @@ def proc_diskio_load(pid):
         for ln in lines:
             p = ln.strip().split()
             header.append(p[0].strip(':'))
-            row.append(p[1]) 
+            row.append(int(p[1]))
         result.append(header)
         result.append(row)
     return result
@@ -129,6 +140,8 @@ def netio_load(pid=None):
             p = x.strip().split()
             row = p
             row[0] = row[0].strip(':')
+            for i in range(1, len(row)):
+                row[i] = int(row[i])
             result.append(row)
     return result
 
@@ -136,22 +149,63 @@ def proc_netio_load(pid):
     return netio_load(pid)
  
 
-def main(pid):
+def create(pid):
     data = {
+        'time':time.time(),
         'interrupt': interrupt_load(),
         'cpu': cpu_load(),
-        'pcpu': proc_cpu_load(pid),
         'mem': mem_load(),
-        'pmem': proc_mem_load(pid),
         'diskio': diskio_load(),
-        'pdiskio': proc_diskio_load(pid),
         'netio': netio_load(),
-        'pnetid': proc_netio_load(pid),
     }
 
+    if pid:
+        pdata = {
+            'pcpu': proc_cpu_load(pid),
+            'pmem': proc_mem_load(pid),
+            'pdiskio': proc_diskio_load(pid),
+            'pnetid': proc_netio_load(pid),
+        }
+        data.update(pdata)
+
+    return data
+
+def main():
+    #if len(sys.argv) == 1:
+    #    print 'usage monitor datafile [pid]'
+    #    return
+    
+    filename = ''
+    f = sys.stdout
+    if len(sys.argv) > 1:
+        filename = sys.argv[1]
+        if filename == 'stdout':
+            filename = ''
+        
+    pid = None
+    if len(sys.argv) > 2:
+        pid = sys.argv[2]
+
+    #print 'filename:%s pid:%s' % (filename, pid)
+
+    if filename:
+        f = open(filename, 'w+')
+    try:
+        while True:
+            result = create(pid)
+            wdata = json.dumps(result, separators=(',', ':'))
+            #print len(wdata)
+            f.write(wdata)
+            f.write('\n')
+            time.sleep(1)
+
+    finally:
+        if filename:
+            f.close()
 
 
-if __name__ == '__main__':
+
+def test():
     import pprint
     x = globals()[sys.argv[1]]
     if len(sys.argv) > 2:
@@ -164,6 +218,8 @@ if __name__ == '__main__':
         pprint.pprint(dict(zip(head, x)))
 
 
+if __name__ == '__main__':
+    main()
 
 
 
