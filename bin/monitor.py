@@ -4,6 +4,7 @@ import os, sys
 import time
 import json
 
+
 def interrupt_load():
     result = []
     with open('/proc/interrupts') as f:
@@ -14,13 +15,18 @@ def interrupt_load():
 
         lines = f.readlines()
         for line in lines:
+            if not ('Rescheduling' in line or 'Function call' in line or 'PCI-MSI' in line):
+                continue
             p = line.strip().split()
             row = []
-            row.append(p[0].strip(':'))
+            name = ' '.join(p[9:])
+            row.append(name)
 
             for i in range(1, cores+1):
                 if len(p) > i:
                      row.append(int(p[i]))
+            if p[1]+p[2] == 0:
+                continue
             result.append(row) 
     return result
 
@@ -37,7 +43,7 @@ def cpu_load():
                 p = ln.strip().split()
                 row = []
                 row.append(p[0])
-                row += [ int(x) for x in p[1:]]
+                row += [ int(x) for x in p[1:len(fields)]]
                 result.append(row)
     return result
 
@@ -45,16 +51,18 @@ def cpu_load():
 
 
 def proc_cpu_load(pid):
-    fields = [['pid', 0], ['comm', 1], ['task_state', 2], 
+    fields = [['pid', 0],  
               ['min_flt', 9], ['cmin_flt', 10], ['maj_flt', 11], ['cmaj_flt', 12], 
               ['utime', 13], ['stime', 14], ['cutime', 15], ['cstime', 16], 
               ['num_threads', 19], ['rss', 23], ['rlim', 24], ['task_cpu', 38], ['task_policy', 40],
              ]
     result = []
-    result.append([x[0] for x in fields])
+    result.append(['name'] + [x[0] for x in fields])
     with open('/proc/%d/stat' % int(pid)) as f:
         p = f.readline().strip().split()
         row = []
+        row.append(p[1][1:-1])
+
         for f in fields:
             if f[0] in ('comm', 'task_state'):
                 row.append(p[f[1]])
@@ -147,6 +155,49 @@ def netio_load(pid=None):
 
 def proc_netio_load(pid):
     return netio_load(pid)
+
+
+
+def proc_fd_load(pid):
+    dirname = '/proc/%d/fd' % int(pid)
+    result = [['fds'], [len(os.listdir(dirname))]]
+    return result
+
+def tcp_load():
+    filename = '/proc/net/snmp'
+    result = []
+    with open(filename) as f:
+        lines = f.readlines()
+
+        dataline = []
+        for ln in lines:
+            if not ln.startswith('Tcp:'):
+                continue
+            dataline.append(ln)
+
+        header = ['name'] + dataline[0].strip().split()[5:]
+        result.append(header)
+        p = dataline[1].strip().split()[5:]
+        result.append(['tcp'] + [ int(x) for x in p ])
+    return result
+             
+def udp_load():
+    filename = '/proc/net/snmp'
+    result = []
+    with open(filename) as f:
+        lines = f.readlines()
+
+        dataline = []
+        for ln in lines:
+            if not ln.startswith('Udp:'):
+                continue
+            dataline.append(ln)
+
+        header = ['name'] + dataline[0].strip().split()[1:]
+        result.append(header)
+        p = dataline[1].strip().split()[1:]
+        result.append(['udp'] + [ int(x) for x in p ])
+    return result
  
 
 def create(pid):
@@ -157,6 +208,8 @@ def create(pid):
         'mem': mem_load(),
         'diskio': diskio_load(),
         'netio': netio_load(),
+        'tcp': tcp_load(),
+        'udp': udp_load(),
     }
 
     if pid:
@@ -164,7 +217,8 @@ def create(pid):
             'pcpu': proc_cpu_load(pid),
             'pmem': proc_mem_load(pid),
             'pdiskio': proc_diskio_load(pid),
-            'pnetid': proc_netio_load(pid),
+            'pnetio': proc_netio_load(pid),
+            'pfd': proc_fd_load(pid),
         }
         data.update(pdata)
 
