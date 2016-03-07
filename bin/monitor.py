@@ -19,7 +19,7 @@ def interrupt_load():
                 continue
             p = line.strip().split()
             row = []
-            name = ' '.join(p[9:])
+            name = ' '.join(p[cores+1:])
             row.append(name)
 
             for i in range(1, cores+1):
@@ -78,14 +78,14 @@ def mem_load():
         lines = f.readlines()
         
         fields = []
-        row = []
+        row = ['mem']
         for ln in lines: 
             p = ln.strip().split()
             k = p[0].strip(':')
             if k in view_fields:
                 fields.append(k)
                 row.append(int(p[1])*1024)
-    result.append(fields)
+    result.append(['name'] + fields)
     result.append(row)
     return result
 
@@ -93,11 +93,11 @@ def mem_load():
 
 
 def proc_mem_load(pid):
-    result = [['res'], ]
+    result = [['name','res'], ]
     with open('/proc/%d/statm' % int(pid)) as f:
         p = f.readline().strip().split()
         row = int(p[1])*4096
-        result.append([row])
+        result.append(['mem', row])
     return result
 
 
@@ -119,8 +119,8 @@ def proc_diskio_load(pid):
     result = []
     with open('/proc/%d/io' % int(pid)) as f:
         lines = f.readlines()
-        header = []
-        row = []
+        header = ['name']
+        row = ['io']
 
         for ln in lines:
             p = ln.strip().split()
@@ -140,7 +140,7 @@ def netio_load(pid=None):
         lines = f.readlines()
         p = lines[1].strip().split('|') 
         p2 = p[1].split()
-        header = ['interface'] + ['recv_'+x for x in p2] + ['send_'+x for x in p2]
+        header = ['name'] + ['recv_'+x for x in p2] + ['send_'+x for x in p2]
         
         result.append(header)
         n = len(header)-1
@@ -160,7 +160,7 @@ def proc_netio_load(pid):
 
 def proc_fd_load(pid):
     dirname = '/proc/%d/fd' % int(pid)
-    result = [['fds'], [len(os.listdir(dirname))]]
+    result = [['name', 'fds'], ['fd', len(os.listdir(dirname))]]
     return result
 
 def tcp_load():
