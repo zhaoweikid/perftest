@@ -1,52 +1,69 @@
-#!/usr/bin/python
+#!/home/qfpay/python/bin/python
 # coding: utf-8
 from gevent import monkey; monkey.patch_all()
 import os, sys
 import traceback
 import getopt
 import gevent
+import json
 import time
 from gevent.pool import Pool
 from gevent.event import Event
 import urllib2, urllib
 from qfcommon.base import logger
 from qfcommon.server import client
+import qfcommon.thriftclient
+import urlparse
 
 def run(result, uri, requests, longconn, timeout):
     global waiting
     waiting.wait()
     
     def _parse_url(uri):
-        result = {'addr':('', 0), 'timeout':timeout, 'func':'', 'args':{}}
+        result = {'server':[{'addr':('', 0), 'timeout':timeout}], 'func':'', 'args':{}}
         p = urlparse.urlparse(uri)
         nc = p.netloc.split(':')
-        result['addr'] = nc
-        result['func'] = p.path[1:]
+        result['server'][0]['addr'] = (nc[0], int(nc[1]))
+        result['func'] = p.path.split('?')[0][1:]
         #result['args'] = p.query.split('=',1)[-1]
-   
-        d = []
-        for one in p.query.split('&'):
-            d.append(one.split('=', 1))
-        result['args'] = dict(d)
+       
+        query = uri.split('?', 1)
+        if len(query) == 2:
+            d = []
+            for one in query[-1].split('&'):
+                d.append(one.split('=', 1))
+            result['args'] = dict(d)
         
-
+        result['args']['args'] = json.loads(result['args']['args'])
+        print result
         return result
         
 
     def do_thrift():
-        tstart = time.time()
         
         u = _parse_url(uri)
-        tm = __import__(u['mod']) 
-        tc = client.ThriftClient(u['addr'], framed=True)
-        ret = tc.call(u['func']), **u['args'])
+        mod = u['args']['mod'].split('.')
+        tm = __import__(mod[0])
 
-        
-        code = response.getcode()
-        tend = time.time()
+        for i in range(2, len(mod)+1):
+            __import__('.'.join(mod[:i]))
+
+        for x in mod[1:]:
+            tm = getattr(tm, x)
+
+        code = 0
+        length = 0
+        try:
+            tstart = time.time()
+            tc = client.ThriftClient(u['server'], tm, framed=False)
+            print 'args:', u['args']['args']
+            ret = tc.call(u['func'], **u['args']['args'])
+            tend = time.time()
+        except:
+            code = -1
        
         ret = 0
-        if code == 200:
+        if code == 0:
             ret = 1
         result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
 
@@ -64,7 +81,7 @@ def run(result, uri, requests, longconn, timeout):
         result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
 
     for i in range(0, requests):
-        if uri.startswith('http')
+        if uri.startswith('http'):
             do_http()
         elif uri.startswith('thrift'):
             do_thrift()
@@ -91,6 +108,8 @@ def start(uri, concur=1, requests=100, longconn=0, timeout=30):
     tstart = 999999999999999999999
     tend = 0
     for k,v in result.iteritems():
+        if not v:
+            continue
         if v[0]['start'] < tstart:
             tstart = v[0]['start']
         if v[-1]['end'] > tend:
@@ -125,7 +144,7 @@ def main():
         print 'options:'
         print '\t-n requests     Number of requests to perform. Default is 100'
         print '\t-c concurrency  Number of multiple requests to make at a time. Default is 1'
-        print '\t-t timeout      Seconds to max. wait for each response. Default is 30 seconds'
+        print '\t-t timeout      Seconds to max. wait for each response. Default is 10000 microseconds'
         print 'uri:'
         print '\thttp://127.0.0.1/aaaaa?a=1'
         print '\thttps://127.0.0.1/aaa?a=1'
@@ -133,10 +152,11 @@ def main():
         print 
         return
     
-    start(uri, config.get('-c', 1), config.get('-n', 100), config.get('-l', 0), config.get('-t', 30))
+    start(uri, config.get('-c', 1), config.get('-n', 100), config.get('-l', 0), config.get('-t', 10000))
 
 
 if __name__ == '__main__':
+    logger.install('stdout')
     main()
 
 
