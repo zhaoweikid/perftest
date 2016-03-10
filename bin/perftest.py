@@ -9,12 +9,49 @@ import time
 from gevent.pool import Pool
 from gevent.event import Event
 import urllib2, urllib
+from qfcommon.base import logger
+from qfcommon.server import client
 
 def run(result, uri, requests, longconn, timeout):
     global waiting
     waiting.wait()
+    
+    def _parse_url(uri):
+        result = {'addr':('', 0), 'timeout':timeout, 'func':'', 'args':{}}
+        p = urlparse.urlparse(uri)
+        nc = p.netloc.split(':')
+        result['addr'] = nc
+        result['func'] = p.path[1:]
+        #result['args'] = p.query.split('=',1)[-1]
+   
+        d = []
+        for one in p.query.split('&'):
+            d.append(one.split('=', 1))
+        result['args'] = dict(d)
+        
 
-    for i in range(0, requests):
+        return result
+        
+
+    def do_thrift():
+        tstart = time.time()
+        
+        u = _parse_url(uri)
+        tm = __import__(u['mod']) 
+        tc = client.ThriftClient(u['addr'], framed=True)
+        ret = tc.call(u['func']), **u['args'])
+
+        
+        code = response.getcode()
+        tend = time.time()
+       
+        ret = 0
+        if code == 200:
+            ret = 1
+        result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
+
+    
+    def do_http():
         tstart = time.time()
         response = urllib2.urlopen(uri, timeout=timeout)
         length = len(response.read())
@@ -25,6 +62,12 @@ def run(result, uri, requests, longconn, timeout):
         if code == 200:
             ret = 1
         result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
+
+    for i in range(0, requests):
+        if uri.startswith('http')
+            do_http()
+        elif uri.startswith('thrift'):
+            do_thrift()
 
 
 def start(uri, concur=1, requests=100, longconn=0, timeout=30):
@@ -69,7 +112,7 @@ def start(uri, concur=1, requests=100, longconn=0, timeout=30):
 
 def main():
     try:  
-        opts, args = getopt.getopt(sys.argv[1:], "c:n:t:l", ["concurrency", "requests", "timeout", "longconn"])  
+        opts, args = getopt.getopt(sys.argv[1:], "c:n:t:lm:", ["concurrency", "requests", "timeout", "longconn","modname"])  
         for i in range(0, len(opts)):
             x = opts[i]
             if x[0] == '-l' and x[1] == '':
@@ -86,7 +129,7 @@ def main():
         print 'uri:'
         print '\thttp://127.0.0.1/aaaaa?a=1'
         print '\thttps://127.0.0.1/aaa?a=1'
-        print '\tthrift://127.0.0.1:10000?args=json'
+        print '\tthrift://127.0.0.1:10000?args=json&mod=qfcommon.thriftclient.payprocessor.PayProcessor&name=PayProcessor'
         print 
         return
     
