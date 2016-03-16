@@ -20,7 +20,7 @@ def run(result, uri, requests, longconn, timeout):
     waiting.wait()
     
     def _parse_url(uri):
-        result = {'server':[{'addr':('', 0), 'timeout':timeout}], 'func':'', 'args':{}}
+        result = {'server':[{'addr':('', 0), 'timeout':timeout}], 'func':'', 'param':{}}
         p = urlparse.urlparse(uri)
         nc = p.netloc.split(':')
         result['server'][0]['addr'] = (nc[0], int(nc[1]))
@@ -32,17 +32,21 @@ def run(result, uri, requests, longconn, timeout):
             d = []
             for one in query[-1].split('&'):
                 d.append(one.split('=', 1))
-            result['args'] = dict(d)
-        
-        result['args']['args'] = json.loads(result['args']['args'])
-        print result
+            result['param'] = dict(d)
+       
+        if 'args' in result['param']:
+            result['param']['args'] = json.loads(result['param']['args'])
+        #print result
         return result
         
 
-    def do_thrift():
-        
+    def do_thrift(n):
         u = _parse_url(uri)
-        mod = u['args']['mod'].split('.')
+        #print u
+        if not u['param'] or not u['param']['mod']:
+            print 'error! must set mod in uri. eg: thrift://127.0.0.1:1000/test?args=json&mod=qfcommon.thriftclient.payprocessor.PayProcessor'
+            return
+        mod = u['param']['mod'].split('.')
         tm = __import__(mod[0])
 
         for i in range(2, len(mod)+1):
@@ -51,40 +55,50 @@ def run(result, uri, requests, longconn, timeout):
         for x in mod[1:]:
             tm = getattr(tm, x)
 
-        code = 0
         length = 0
-        try:
-            tstart = time.time()
-            tc = client.ThriftClient(u['server'], tm, framed=False)
-            print 'args:', u['args']['args']
-            ret = tc.call(u['func'], **u['args']['args'])
-            tend = time.time()
-        except:
-            code = -1
-       
-        ret = 0
-        if code == 0:
+
+        tc = client.ThriftClient(u['server'], tm, framed=False)
+        for i in range(0, n):
             ret = 1
-        result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
+            tend = 0
+            tstart = time.time()
+            try:
+                if tc is None:
+                    tc = client.ThriftClient(u['server'], tm, framed=False)
+
+                if u['param'] and u['param'].get('args'):
+                    retx = tc.call(u['func'], **u['param']['args'])
+                else:
+                    retx = tc.call(u['func'])
+                if not longconn:
+                    tc.close()
+                    tc = None
+            except Exception, e:
+                log.warn(str(e))
+                ret = 0
+            finally:
+                tend = time.time()
+           
+            result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
 
     
-    def do_http():
-        tstart = time.time()
-        response = urllib2.urlopen(uri, timeout=timeout)
-        length = len(response.read())
-        code = response.getcode()
-        tend = time.time()
-       
-        ret = 0
-        if code == 200:
-            ret = 1
-        result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
+    def do_http(n):
+        for i in range(0, n):
+            tstart = time.time()
+            response = urllib2.urlopen(uri, timeout=timeout)
+            length = len(response.read())
+            code = response.getcode()
+            tend = time.time()
+           
+            ret = 0
+            if code == 200:
+                ret = 1
+            result.append({'start':tstart, 'end':tend, 'ret':ret, 'len':length})
 
-    for i in range(0, requests):
-        if uri.startswith('http'):
-            do_http()
-        elif uri.startswith('thrift'):
-            do_thrift()
+    if uri.startswith('http'):
+        do_http(requests)
+    elif uri.startswith('thrift'):
+        do_thrift(requests)
 
 
 def start(uri, concur=1, requests=100, longconn=0, timeout=30):
@@ -124,10 +138,9 @@ def start(uri, concur=1, requests=100, longconn=0, timeout=30):
     avg = float(sum(ts)) / allreq 
     band = int(float(trans) / (tend-tstart) /1024)
     
-    print 'time:%f requests:%d, succ:%d %.2f%%, qps:%d, avg:%.3fms, trans:%dk, band:%dk' % \
-            (tend-tstart, allreq, succ, succ_rate, qps, avg*1000, int(float(trans)/1024), band)
+    log.warn('time=%f|requests=%d|succ=%d %.2f%%|qps=%d|avg=%.3fms|trans=%dk|band=%dk' % \
+            (tend-tstart, allreq, succ, succ_rate, qps, avg*1000, int(float(trans)/1024), band))
 
-    print 'end'
 
 def main():
     try:  
@@ -145,18 +158,20 @@ def main():
         print '\t-n requests     Number of requests to perform. Default is 100'
         print '\t-c concurrency  Number of multiple requests to make at a time. Default is 1'
         print '\t-t timeout      Seconds to max. wait for each response. Default is 10000 microseconds'
+        print '\t-l longconn     long connection, default is 0'
         print 'uri:'
         print '\thttp://127.0.0.1/aaaaa?a=1'
         print '\thttps://127.0.0.1/aaa?a=1'
-        print '\tthrift://127.0.0.1:10000?args=json&mod=qfcommon.thriftclient.payprocessor.PayProcessor&name=PayProcessor'
+        print '\tthrift://127.0.0.1:10000?args=json&mod=qfcommon.thriftclient.payprocessor.PayProcessor'
         print 
         return
-    
-    start(uri, config.get('-c', 1), config.get('-n', 100), config.get('-l', 0), config.get('-t', 10000))
+   
+    longconn = '-l' in config
+    start(uri, config.get('-c', 1), config.get('-n', 100), longconn, config.get('-t', 10000))
 
 
 if __name__ == '__main__':
-    logger.install('stdout')
+    log = logger.install('stdout')
     main()
 
 
