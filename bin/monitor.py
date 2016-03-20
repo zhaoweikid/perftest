@@ -32,7 +32,7 @@ def interrupt_load():
 
 
 def cpu_load():
-    fields = ['name', 'user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq']
+    fields = ['name', 'user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq','steal','quest','quest_nice']
 
     result = []
     result.append(fields)
@@ -72,7 +72,7 @@ def proc_cpu_load(pid):
     return result
 
 def mem_load():
-    view_fields = ['MemTotal','MemFree','Buffers','Cached','SwapTotal','SwapFree','Mapped','Shmem','Slab']
+    view_fields = ['MemTotal','MemFree','Buffers','Cached','SwapTotal','SwapFree','Mapped','Shmem','Slab','MemUsed']
     result = []
     with open('/proc/meminfo') as f:
         lines = f.readlines()
@@ -85,7 +85,8 @@ def mem_load():
             if k in view_fields:
                 fields.append(k)
                 row.append(int(p[1])*1024)
-    result.append(['name'] + fields)
+        row.append(row[1]-row[2])
+    result.append(['name'] + fields + view_fields[-1:])
     result.append(row)
     return result
 
