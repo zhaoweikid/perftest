@@ -24,34 +24,40 @@ config = {
     },
     'mem':{
         'diff':False,
-        'value_division':1024,
+        'value_division':1024*1024,
         'format':[
-            {'name':'mem', 'title':u'内存(kb)', 'fields':['MemTotal','MemFree','Buffers','Cached','Slab','Shmem','Mapped']},
-            {'name':'swap', 'title':u'交换分区(kb)', 'fields':['SwapTotal','SwapFree']},
+            {'name':'mem', 'title':u'内存(MB)', 'fields':['MemTotal','MemUsed','Buffers','Cached','Shmem'],},
+            {'name':'mem_map', 'title':u'内存Mapped(MB)', 'fields':['Mapped']},
+            {'name':'mem_slab', 'title':u'内存Slab(MB)', 'fields':['Slab']},
+            {'name':'swap', 'title':u'交换分区(MB)', 'fields':['SwapTotal','SwapFree']},
         ]
     },
     'diskio':{
         'diff':True,
         'format':[
-            {'name':'diskio_n', 'title':u'磁盘IO次数', 'fields':['rio', 'rmerge', 'rsect', 'wio', 'wmerge', 'wsect', 'running']},
-            {'name':'diskio_time', 'title':u'磁盘IO字节数', 'fields':['ruse', 'wuse', 'use', 'aveq']},
+            {'name':'diskio_n', 'title':u'磁盘读写次数', 'fields':['rio', 'wio']},
+            {'name':'diskio_nmrg', 'title':u'磁盘合并读写次数', 'fields':['rmerge', 'wmerge']},
+            {'name':'diskio_nsec', 'title':u'磁盘扇区读写次数', 'fields':['rsect', 'wsect']},
+            {'name':'diskio_b', 'title':u'磁盘IO字节数', 'fields':['ruse', 'wuse', 'use', 'aveq']},
         ]
     },
     'netio':{
         'diff':True,
         'format':[
-            {'name':'netio_n', 'title':u'网络IO次数', 'fields':
-                ["recv_packets","recv_errs","recv_drop","recv_fifo","recv_frame","recv_compressed","recv_multicast",
-                 "send_packets","send_errs","send_drop","send_fifo","send_frame","send_compressed","send_multicast"]},
-            {'name':'netio_b', 'title':u'网络IO字节', 'fields':["recv_bytes","send_bytes"]},
+            {'name':'netio_n', 'title':u'数据包收发次数', 'fields':["recv_packets","send_packets"]},
+            {'name':'netio_nerr', 'title':u'网络读写错误次数', 'fields':["recv_errs","recv_drop","send_errs","send_drop"]},
+            {'name':'netio_nfi', 'title':u'网络队列错误次数', 'fields':["recv_fifo","send_fifo"]},
+            {'name':'netio_nfr', 'title':u'网络链路层帧错误次数', 'fields':["recv_frame","send_frame"]},
+            {'name':'netio_b', 'title':u'网络读写字节', 'fields':["recv_bytes","send_bytes"]},
         ]
     },
     'tcp':{
         'diff':True,
         'nodiff_fields':['CurrEstab'],
         'format':[
-            {'name':'tcp', 'title':u'TCP连接统计', 'fields':
-                ['ActiveOpens', 'PassiveOpens', 'AttemptFails', 'EstabResets', 'InErrs', 'OutRsts']},
+            {'name':'tcp', 'title':u'TCP已建立连接统计', 'fields':['ActiveOpens', 'PassiveOpens']},
+            {'name':'tcp_err', 'title':u'TCP错误统计', 'fields':['AttemptFails','InErrs']},
+            {'name':'tcp_rst', 'title':u'TCP连接reset统计', 'fields':['EstabResets','OutRsts']},
             {'name':'tcp_seg', 'title':u'TCP报文统计', 'fields':['InSegs', 'OutSegs','RetransSegs']},
             {'name':'tcp_cur', 'title':u'TCP当前连接统计', 'fields':['CurrEstab']},
         ]
@@ -72,25 +78,29 @@ config = {
     },
     'pmem':{
         'diff':False,
+        'value_division':1024,
         'format':[
-            {'name':'pmem', 'title':u'进程内存统计', 'fields':['res']},
+            {'name':'pmem', 'title':u'进程内存统计 (KB)', 'fields':['res']},
         ]
     },
     'pdiskio':{
         'diff':False,
         'format':[
-            {'name':'pdiskio_n', 'title':u'进程磁盘IO次数统计', 'fields':['syscr', 'syscw']},
-            {'name':'pdiskio_b', 'title':u'进程磁盘IO字节数统计', 'fields':
-                ['rchar', 'wchar', 'read_bytes', 'cancelled_write_bytes']},
+            {'name':'pdiskio_n', 'title':u'进程读写系统调用次数统计', 'fields':['syscr', 'syscw']},
+            {'name':'pdiskio_bsys', 'title':u'进程磁盘系统调用读写字节数统计', 'fields':['rchar', 'wchar']},
+            {'name':'pdiskio_bsys_real', 'title':u'进程磁盘真实读写字节数统计', 'fields':['read_bytes', 'write_bytes']},
+            {'name':'pdiskio_bc', 'title':u'进程取消写入字节数统计', 'fields':['cancelled_write_bytes']},
         ]
     },
     'pnetio':{
         'diff':True,
         'format':[
-            {'name':'pnetio_n', 'title':u'进程网络IO次数统计', 'fields':
-                ["recv_packets","recv_errs","recv_drop","recv_fifo","recv_frame","recv_compressed","recv_multicast",
-                 "send_packets","send_errs","send_drop","send_fifo","send_frame","send_compressed","send_multicast"]},
-            {'name':'pnetio_b', 'title':u'进程网络IO字节数统计', 'fields':["recv_bytes","send_bytes"]},
+            {'name':'pnetio_n', 'title':u'数据包收发次数', 'fields':["recv_packets","send_packets"]},
+            {'name':'pnetio_nerr', 'title':u'网络读写错误次数', 'fields':["recv_errs","recv_drop","send_errs","send_drop"]},
+            {'name':'pnetio_nfi', 'title':u'网络队列错误次数', 'fields':["recv_fifo","send_fifo"]},
+            {'name':'pnetio_nfr', 'title':u'网络链路层帧错误次数', 'fields':["recv_frame","send_frame"]},
+            {'name':'pnetio_b', 'title':u'网络读写字节', 'fields':["recv_bytes","send_bytes"]},
+
         ]
     },
     'pfd':{
@@ -101,6 +111,20 @@ config = {
     },
 
 }
+
+
+views = [ 
+    {'title':u'内存统计', 'names':['mem', 'mem_map', 'mem_slab', 'pmem'],},
+    {'title':u'CPU统计',  'names':['cpu','pcpu'],},
+    {'title':u'磁盘IO',   'names':['diskio_n', 'diskio_nmrg', 'diskio_nsec', 'diskio_b', 'pdiskio_n','pdiskio_bsys','pdiskio_bsys_real','pdiskio_bc'],},
+    #{'title':u'网络IO',   'names':['netio_n','netio_nerr','netio_nfi','netio_nfr','netio_b','pnetio_n','pnetio_nerr','pnetio_nfi','pnetio_nfr','pnetio_b'],},
+    {'title':u'网络IO',   'names':['netio_n','netio_nerr','netio_b','pnetio_n','pnetio_nerr','pnetio_b'],},
+    {'title':u'TCP统计',  'names':['tcp','tcp_err','tcp_rst', 'tcp_seg', 'tcp_cur'],},
+    {'title':u'UDP统计',  'names':['udp', 'udp_err']},
+    {'title':u'文件描述符统计', 'names':['pfd']},
+    {'title':u'线程统计', 'names':['pth']},
+    {'title':u'中断统计', 'names':['interrupt']},
+]
 
 class MonitorData:
     def __init__(self, filename):
@@ -253,8 +277,12 @@ class Drawer:
     def __del__(self):
         self.f.close()
     
-    def _draw(self, title, x, data):
-        line = pygal.Line()
+    def _draw(self, name, title, x, data):
+        if name == 'mem':
+            #line = pygal.StackedLine(fill=True, x_label_rotation=30, show_x_labels=False)
+            line = pygal.Line(x_label_rotation=30, show_x_labels=False)
+        else:
+            line = pygal.Line(x_label_rotation=30, show_x_labels=False)
         line.title = title
         line.x_labels = x
 
@@ -271,12 +299,46 @@ class Drawer:
         for kname in keys:
             value = one['data'][kname]
             title = self.conf_title[name] + ' ' + kname
-            ret = self._draw(title, one['x'], value)
+            ret = self._draw(kname, title, one['x'], value)
+            ret = ret.replace('<svg ', '<svg width=600 ')
             self.f.write(ret)
 
-    def drawall(self):
+    def drawall_v1(self):
+        a1 = '''<html xmlns=http://www.w3.org/1999/xhtml>
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>测试结果</title>
+</head>
+<body>
+'''
+        a2 = '</body></html>'
+        self.f.write(a1)
         for k in self.data:
+            head = '<div style="height:50px;text-align:center">%s</div>'  % k
+            self.f.write(head)
             self.draw(k)
+
+        self.f.write(a2)
+
+    def drawall(self):
+        a1 = '''<html xmlns=http://www.w3.org/1999/xhtml>
+<head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+<title>测试结果</title>
+</head>
+<body>
+'''
+        a2 = '</body></html>'
+        self.f.write(a1)
+
+        global views
+       
+        for v in views:
+            head = u'<div style="height:50px;text-align:center;margin:10px;font-size:18pt;font-weigth:bold;">%s</div>'  % v['title']
+            self.f.write(head.encode('utf-8'))
+            for k in v['names']:
+                self.draw(k)
+                  
+        self.f.write(a2)
+
 
 
 def main():
