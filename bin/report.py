@@ -2,6 +2,7 @@
 # coding: utf-8
 import os, sys
 import datetime
+import math
 import pygal
 import copy
 import json
@@ -38,7 +39,7 @@ config = {
             {'name':'diskio_n', 'title':u'磁盘读写次数', 'fields':['rio', 'wio']},
             {'name':'diskio_nmrg', 'title':u'磁盘合并读写次数', 'fields':['rmerge', 'wmerge']},
             {'name':'diskio_nsec', 'title':u'磁盘扇区读写次数', 'fields':['rsect', 'wsect']},
-            {'name':'diskio_b', 'title':u'磁盘IO字节数', 'fields':['ruse', 'wuse', 'use', 'aveq']},
+            {'name':'diskio_b', 'title':u'磁盘读写时间(毫秒)', 'fields':['ruse', 'wuse', 'use']},
         ]
     },
     'netio':{
@@ -71,8 +72,10 @@ config = {
     },
     'pcpu':{
         'diff':True,
+        'func':'_format_proc_cpu',
         'format':[
-            {'name':'pcpu', 'title':u'进程CPU统计', 'fields':['utime','stime']},
+            #{'name':'pcpu', 'title':u'进程CPU统计', 'fields':['utime','stime','cutime','cstime']},
+            {'name':'pcpu', 'title':u'进程CPU统计', 'fields':['cpu']},
             {'name':'pth', 'title':u'线程统计', 'fields':['num_threads']},
         ]
     },
@@ -86,8 +89,8 @@ config = {
     'pdiskio':{
         'diff':False,
         'format':[
-            {'name':'pdiskio_n', 'title':u'进程读写系统调用次数统计', 'fields':['syscr', 'syscw']},
-            {'name':'pdiskio_bsys', 'title':u'进程磁盘系统调用读写字节数统计', 'fields':['rchar', 'wchar']},
+            {'name':'pdiskio_n', 'title':u'进程系统调用读写次数统计', 'fields':['syscr', 'syscw']},
+            {'name':'pdiskio_bsys', 'title':u'进程系统调用读写字节数统计', 'fields':['rchar', 'wchar']},
             {'name':'pdiskio_bsys_real', 'title':u'进程磁盘真实读写字节数统计', 'fields':['read_bytes', 'write_bytes']},
             {'name':'pdiskio_bc', 'title':u'进程取消写入字节数统计', 'fields':['cancelled_write_bytes']},
         ]
@@ -95,11 +98,11 @@ config = {
     'pnetio':{
         'diff':True,
         'format':[
-            {'name':'pnetio_n', 'title':u'数据包收发次数', 'fields':["recv_packets","send_packets"]},
-            {'name':'pnetio_nerr', 'title':u'网络读写错误次数', 'fields':["recv_errs","recv_drop","send_errs","send_drop"]},
-            {'name':'pnetio_nfi', 'title':u'网络队列错误次数', 'fields':["recv_fifo","send_fifo"]},
-            {'name':'pnetio_nfr', 'title':u'网络链路层帧错误次数', 'fields':["recv_frame","send_frame"]},
-            {'name':'pnetio_b', 'title':u'网络读写字节', 'fields':["recv_bytes","send_bytes"]},
+            {'name':'pnetio_n', 'title':u'进程数据包收发次数', 'fields':["recv_packets","send_packets"]},
+            {'name':'pnetio_nerr', 'title':u'进程网络读写错误次数', 'fields':["recv_errs","recv_drop","send_errs","send_drop"]},
+            {'name':'pnetio_nfi', 'title':u'进程网络队列错误次数', 'fields':["recv_fifo","send_fifo"]},
+            {'name':'pnetio_nfr', 'title':u'进程网络链路层帧错误次数', 'fields':["recv_frame","send_frame"]},
+            {'name':'pnetio_b', 'title':u'进程网络读写字节', 'fields':["recv_bytes","send_bytes"]},
 
         ]
     },
@@ -116,7 +119,8 @@ config = {
 views = [ 
     {'title':u'内存统计', 'names':['mem', 'mem_map', 'mem_slab', 'pmem'],},
     {'title':u'CPU统计',  'names':['cpu','pcpu'],},
-    {'title':u'磁盘IO',   'names':['diskio_n', 'diskio_nmrg', 'diskio_nsec', 'diskio_b', 'pdiskio_n','pdiskio_bsys','pdiskio_bsys_real','pdiskio_bc'],},
+    #{'title':u'磁盘IO',   'names':['diskio_n', 'diskio_nmrg', 'diskio_nsec', 'diskio_b', 'pdiskio_n','pdiskio_bsys','pdiskio_bsys_real','pdiskio_bc'],},
+    {'title':u'磁盘IO',   'names':['diskio_n', 'diskio_nmrg', 'diskio_nsec', 'diskio_b', 'pdiskio_n','pdiskio_bsys','pdiskio_bsys_real']},
     #{'title':u'网络IO',   'names':['netio_n','netio_nerr','netio_nfi','netio_nfr','netio_b','pnetio_n','pnetio_nerr','pnetio_nfi','pnetio_nfr','pnetio_b'],},
     {'title':u'网络IO',   'names':['netio_n','netio_nerr','netio_b','pnetio_n','pnetio_nerr','pnetio_b'],},
     {'title':u'TCP统计',  'names':['tcp','tcp_err','tcp_rst', 'tcp_seg', 'tcp_cur'],},
@@ -130,6 +134,8 @@ class MonitorData:
     def __init__(self, filename):
         self.filename = filename
         self.data = []
+        self.view_fields_num = 20
+        self.view_skip_none = True
         
         self.load()
 
@@ -142,21 +148,96 @@ class MonitorData:
                 obj = json.loads(ln.strip())
                 self.data.append(obj)
 
+
+    def merge(self, data):
+        '''merge many data to one'''
+        rdata = data['data']
+        k = rdata.keys()[0]
+        kx = rdata[k].keys()[0]
+        fn = len(rdata[k][kx])
+        if fn <= self.view_fields_num:
+            return data
+      
+        step = fn/self.view_fields_num
+        data['x'] = [ data['x'][a] for a in range(0,len(data['x']),step)] 
+        #newdata = copy.deepcopy(data)
+        newrdata = {}
+        for k,v in rdata.iteritems():
+            newrdata[k] = {}
+            for k2,v2 in v.iteritems():
+                newv2 = []
+                for i in range(0, len(v2), step):
+                    newv2.append(int(math.ceil(float(sum(v2[i:i+step]))/len(v2[i:i+step]))))
+                newrdata[k][k2] = newv2
+        data['data'] = newrdata
+
+        return data
+
     def format(self):
         result = {}
 
         for srcname, setting in config.iteritems():
             diff = setting['diff']
             fmt = setting['format']
-
-            ret = self._format_general(srcname, self.data, setting)
+            
+            if 'func' in setting:
+                ret = getattr(self, setting['func'])(srcname, self.data, setting)
+            else:
+                ret = self._format_general(srcname, self.data, setting)
             for f in fmt:
                 retx = copy.deepcopy(ret) 
                 self._fields_filter(retx, f)
-                result[f['name']] = retx
+                result[f['name']] = self.merge(retx)
+                #result[f['name']] = retx
+                self._skip_none(result[f['name']])
 
         return result
 
+    def _skip_none(self, data):
+        rdata = data['data']
+        if self.view_skip_none:
+            delk = []
+            for k,g in rdata.iteritems():
+                n = 0
+                for gk, gv in g.iteritems():
+                    n += sum(gv)
+                if n == 0:
+                    delk.append(k)
+
+            for k in delk:
+                del rdata[k]
+
+
+    def _format_proc_cpu(self, name, data, fmt):
+        cpu_fmt = copy.deepcopy(config['cpu'])
+        cpu_fmt['rate'] = False
+        cpu_data  = self._format_general('cpu', data, cpu_fmt)
+        pcpu_data = self._format_general(name, data, fmt)
+
+        rdata = pcpu_data['data']
+        cpu_stat = cpu_data['data']['cpu']
+        cpu_fields = cpu_stat.keys()
+
+        cores = len(cpu_data['data'].keys())-1
+
+        gname = rdata.keys()[0]
+        pcpu_fields = ['stime','utime','cstime','cutime']
+        rdata2 = {gname:{'cpu':[], 'num_threads':rdata[gname]['num_threads']}}
+
+       
+        for i in range(0, len(rdata[gname][pcpu_fields[0]])):
+            pn = sum([ rdata[gname][k][i] for k in pcpu_fields ])
+            an = sum([ cpu_stat[k][i] for k in cpu_fields ])
+            v = 0
+            if an > 0:
+                v = round(float(pn)/an * 100 * cores, 2)
+            rdata2[gname]['cpu'].append(v)
+
+        pcpu_data['data'] = rdata2
+
+        return pcpu_data
+
+      
 
     def _format_general(self, name, data, fmt):
         # data:  chart.cpu.xxxx, eg: rdata['interrupt_name']['cpu_name']
@@ -205,6 +286,7 @@ class MonitorData:
             return ret
 
         if diff:
+            rdata = rows['data']
             rdata2 = {}
             for tk,y in rdata.iteritems():
                 newdata = {}
@@ -219,6 +301,7 @@ class MonitorData:
             rows['data'] = rdata2
 
         if rate:
+            rdata = rows['data']
             rdata2 = {}
             for tk,y in rdata.iteritems():
                 keys = y.keys()
@@ -231,12 +314,13 @@ class MonitorData:
                     n = sum([ y[k][i]  for k in keys ])
                     for k in keys:
                         if n > 0:
-                            newdata[k][i] = newdata[k][i]/float(n)
+                            newdata[k][i] = round(newdata[k][i]/float(n) * 100, 2)
                         else:
                             newdata[k][i] = 0
                 rdata2[tk] = newdata
 
             rows['data'] = rdata2
+        
 
         return rows
 
