@@ -45,6 +45,9 @@ def cpu_load():
                 row.append(p[0])
                 row += [ int(x) for x in p[1:len(fields)]]
                 result.append(row)
+    # maybe not have quest/quest_nice
+    if len(result[-1]) < len(result[0]):
+        result[0] = result[0][:len(result[-1])]
     return result
 
 

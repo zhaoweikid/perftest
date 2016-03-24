@@ -87,7 +87,7 @@ config = {
         ]
     },
     'pdiskio':{
-        'diff':False,
+        'diff':True,
         'format':[
             {'name':'pdiskio_n', 'title':u'进程系统调用读写次数统计', 'fields':['syscr', 'syscw']},
             {'name':'pdiskio_bsys', 'title':u'进程系统调用读写字节数统计', 'fields':['rchar', 'wchar']},
@@ -278,6 +278,8 @@ class MonitorData:
                     ydata[h[i]].append(r[i+1]/value_division)
 
         def differ(alist):
+            if not alist:
+                return alist
             ret = []
             start = alist[0]
             for i in range(0, len(alist)):
@@ -286,7 +288,7 @@ class MonitorData:
             return ret
 
         if diff:
-            rdata = rows['data']
+            #rdata = rows['data']
             rdata2 = {}
             for tk,y in rdata.iteritems():
                 newdata = {}
