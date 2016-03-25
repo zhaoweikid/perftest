@@ -260,7 +260,7 @@ class MonitorData:
 
 
         for onecheck in self.data:
-            t = datetime.datetime.fromtimestamp(onecheck['time'])
+            t = datetime.datetime.fromtimestamp(onecheck['t'])
             # time, xdata
             rows['x'].append(str(t)[11:19])
             one = onecheck[name]

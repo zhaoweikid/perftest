@@ -3,256 +3,95 @@
 import os, sys
 import time
 import json
+import types
+import getopt
+import traceback
+import plugin
 
+HOME = os.path.dirname(os.path.abspath(__file__))
 
-def interrupt_load():
-    result = []
-    with open('/proc/interrupts') as f:
-        headstr = f.readline()
-        header = ['name'] + headstr.split()
-        result.append(header)
-        cores = len(header) - 1
-
-        lines = f.readlines()
-        for line in lines:
-            if not ('Rescheduling' in line or 'Function call' in line or 'PCI-MSI' in line):
-                continue
-            p = line.strip().split()
-            row = []
-            name = ' '.join(p[cores+1:])
-            row.append(name)
-
-            for i in range(1, cores+1):
-                if len(p) > i:
-                     row.append(int(p[i]))
-            if p[1]+p[2] == 0:
-                continue
-            result.append(row) 
-    return result
-
-
-def cpu_load():
-    fields = ['name', 'user', 'nice', 'system', 'idle', 'iowait', 'irq', 'softirq','steal','quest','quest_nice']
-
-    result = []
-    result.append(fields)
-    with open('/proc/stat') as f:
-        lines = f.readlines()
-        for ln in lines:
-            if ln.startswith('cpu'):
-                p = ln.strip().split()
-                row = []
-                row.append(p[0])
-                row += [ int(x) for x in p[1:len(fields)]]
-                result.append(row)
-    return result
-
-
-
-
-def proc_cpu_load(pid):
-    fields = [['pid', 0],  
-              ['min_flt', 9], ['cmin_flt', 10], ['maj_flt', 11], ['cmaj_flt', 12], 
-              ['utime', 13], ['stime', 14], ['cutime', 15], ['cstime', 16], 
-              ['num_threads', 19], ['rss', 23], ['rlim', 24], ['task_cpu', 38], ['task_policy', 40],
-             ]
-    result = []
-    result.append(['name'] + [x[0] for x in fields])
-    with open('/proc/%d/stat' % int(pid)) as f:
-        p = f.readline().strip().split()
-        row = []
-        row.append(p[1][1:-1])
-
-        for f in fields:
-            if f[0] in ('comm', 'task_state'):
-                row.append(p[f[1]])
-            else:
-                row.append(int(p[f[1]]))
-        result.append(row)
-    return result
-
-def mem_load():
-    view_fields = ['MemTotal','MemFree','Buffers','Cached','SwapTotal','SwapFree','Mapped','Shmem','Slab','MemUsed']
-    result = []
-    with open('/proc/meminfo') as f:
-        lines = f.readlines()
-        
-        fields = []
-        row = ['mem']
-        for ln in lines: 
-            p = ln.strip().split()
-            k = p[0].strip(':')
-            if k in view_fields:
-                fields.append(k)
-                row.append(int(p[1])*1024)
-        row.append(row[1]-row[2])
-    result.append(['name'] + fields + view_fields[-1:])
-    result.append(row)
-    return result
-
-
-
-
-def proc_mem_load(pid):
-    result = [['name','res'], ]
-    with open('/proc/%d/statm' % int(pid)) as f:
-        p = f.readline().strip().split()
-        row = int(p[1])*4096
-        result.append(['mem', row])
-    return result
-
-
-
-def diskio_load():
-    fields = ['name', 'rio', 'rmerge', 'rsect', 'ruse', 'wio', 'wmerge', 'wsect', 'wuse', 'running', 'use', 'aveq']
-    result = [fields]
-    with open('/proc/diskstats') as f:
-        lines = f.readlines()
-        for ln in lines:
-            row = ln.strip().split()[2:]
-            if int(row[1]) + int(row[5]) == 0:
-                continue
-            result.append([row[0]] + [ int(x) for x in row[1:]])
-    return result
-
-
-def proc_diskio_load(pid):
-    result = []
-    with open('/proc/%d/io' % int(pid)) as f:
-        lines = f.readlines()
-        header = ['name']
-        row = ['io']
-
-        for ln in lines:
-            p = ln.strip().split()
-            header.append(p[0].strip(':'))
-            row.append(int(p[1]))
-        result.append(header)
-        result.append(row)
-    return result
-        
-
-def netio_load(pid=None):
-    result = []
-    filename = '/proc/net/dev'
-    if pid:
-        filename = '/proc/%d/net/dev' % (int(pid))
-    with open('/proc/net/dev') as f:
-        lines = f.readlines()
-        p = lines[1].strip().split('|') 
-        p2 = p[1].split()
-        header = ['name'] + ['recv_'+x for x in p2] + ['send_'+x for x in p2]
-        
-        result.append(header)
-        n = len(header)-1
-        for x in lines[2:]:
-            p = x.strip().split()
-            row = p
-            row[0] = row[0].strip(':')
-            for i in range(1, len(row)):
-                row[i] = int(row[i])
-            result.append(row)
-    return result
-
-def proc_netio_load(pid):
-    return netio_load(pid)
-
-
-
-def proc_fd_load(pid):
-    dirname = '/proc/%d/fd' % int(pid)
-    result = [['name', 'fds'], ['fd', len(os.listdir(dirname))]]
-    return result
-
-def tcp_load():
-    filename = '/proc/net/snmp'
-    result = []
-    with open(filename) as f:
-        lines = f.readlines()
-
-        dataline = []
-        for ln in lines:
-            if not ln.startswith('Tcp:'):
-                continue
-            dataline.append(ln)
-
-        header = ['name'] + dataline[0].strip().split()[5:]
-        result.append(header)
-        p = dataline[1].strip().split()[5:]
-        result.append(['tcp'] + [ int(x) for x in p ])
-    return result
-             
-def udp_load():
-    filename = '/proc/net/snmp'
-    result = []
-    with open(filename) as f:
-        lines = f.readlines()
-
-        dataline = []
-        for ln in lines:
-            if not ln.startswith('Udp:'):
-                continue
-            dataline.append(ln)
-
-        header = ['name'] + dataline[0].strip().split()[1:]
-        result.append(header)
-        p = dataline[1].strip().split()[1:]
-        result.append(['udp'] + [ int(x) for x in p ])
-    return result
- 
+funcs = {}
 
 def create(pid):
     data = {
-        'time':time.time(),
-        'interrupt': interrupt_load(),
-        'cpu': cpu_load(),
-        'mem': mem_load(),
-        'diskio': diskio_load(),
-        'netio': netio_load(),
-        'tcp': tcp_load(),
-        'udp': udp_load(),
-    }
+        't':time.time(),
+    } 
+    
+    for name,func in funcs.iteritems():
+        ret = None
+        if name.startswith('proc_'):
+            if pid:
+                ret = func(pid)
+        else:
+            ret = func()
 
-    if pid:
-        pdata = {
-            'pcpu': proc_cpu_load(pid),
-            'pmem': proc_mem_load(pid),
-            'pdiskio': proc_diskio_load(pid),
-            'pnetio': proc_netio_load(pid),
-            'pfd': proc_fd_load(pid),
-        }
-        data.update(pdata)
+        if ret:
+            data[name] = ret
 
     return data
 
+def split_header(data):
+    header = {}
+    body = {}
+    for k,v in data.iteritems():
+        if k == 't':
+            body[k] = v
+            continue
+        header[k] = v[0]
+        body[k] = v[1:]
+
+    return header, body
+
 def main():
-    #if len(sys.argv) == 1:
-    #    print 'usage monitor datafile [pid]'
-    #    return
-    
-    filename = ''
-    f = sys.stdout
-    if len(sys.argv) > 1:
-        filename = sys.argv[1]
-        if filename == 'stdout':
-            filename = ''
+    try:  
+        opts, args = getopt.getopt(sys.argv[1:], "o:p:t:", ["outfile", "pid", "second"])  
+        config = dict([ (x[0], int(x[1]))  for x in opts ])
+    except:  
+        traceback.print_exc()
+        print 'usage:\n\tmonitor [options]'
+        print 'options:'
+        print '\t-o filename    output file'
+        print '\t-p pid         process id'
+        print '\t-t second      check interval. default 1'
+        print 
+        print 'eg: ./monitor.py -o outfile -p 1234'
+        print
+        return
+
+    filename = config.get('-o', 'stdout')
+    pid = config.get('-p', None)
+    interval = int(config.get('-t', 1))
+
+    #print 'outfile:%s pid:%s' % (filename, pid)
+
+    global funcs
+    for k, v in plugin.__dict__.iteritems():
+        if type(v) == types.ModuleType and v.__name__.startswith('plugin'):
+            for name, func in v.__dict__.iteritems():
+                if type(func) == types.FunctionType and not name.startswith('_'):
+                    funcs[name] = func 
+
+
         
-    pid = None
-    if len(sys.argv) > 2:
-        pid = sys.argv[2]
-
-    #print 'filename:%s pid:%s' % (filename, pid)
-
-    if filename:
+    f = sys.stdout
+    if filename and filename != 'stdout':
         f = open(filename, 'w+')
+
+    write_header = False
     try:
         while True:
             result = create(pid)
-            wdata = json.dumps(result, separators=(',', ':'))
+            head, body = split_header(result)
+            if not write_header:
+                write_header = True
+                f.write(json.dumps(head, separators=(',', ':')))
+                f.write('\n')
+            #wdata = json.dumps(result, separators=(',', ':'))
+            wdata = json.dumps(body, separators=(',', ':'))
             #print len(wdata)
             f.write(wdata)
             f.write('\n')
-            time.sleep(1)
+            time.sleep(interval)
 
     finally:
         if filename:
