@@ -12,12 +12,15 @@ HOME = os.path.dirname(os.path.abspath(__file__))
 
 funcs = {}
 
-def create(pid):
+def create(pid, funclist):
     data = {
         't':time.time(),
     } 
     
     for name,func in funcs.iteritems():
+        if funclist and name not in funclist:
+            continue
+
         ret = None
         if name.startswith('proc_'):
             if pid:
@@ -42,27 +45,38 @@ def split_header(data):
 
     return header, body
 
+def usage():
+    print 'usage:\n\tmonitor [options]'
+    print 'options:'
+    print '\t-o filename    output file'
+    print '\t-p pid         process id'
+    print '\t-t second      check interval. default 1'
+    print '\t-f functions   function in plugins. default all. eg: cpu,mysql'
+    print 
+    print 'eg: ./monitor.py -o outfile -p 1234'
+    print
+
 def main():
     try:  
-        opts, args = getopt.getopt(sys.argv[1:], "o:p:t:", ["outfile", "pid", "second"])  
-        config = dict([ (x[0], int(x[1]))  for x in opts ])
+        opts, args = getopt.getopt(sys.argv[1:], "o:p:t:f:", ["outfile", "pid", "second", "functions"])  
+        config = dict([ (x[0], x[1])  for x in opts ])
     except:  
         traceback.print_exc()
-        print 'usage:\n\tmonitor [options]'
-        print 'options:'
-        print '\t-o filename    output file'
-        print '\t-p pid         process id'
-        print '\t-t second      check interval. default 1'
-        print 
-        print 'eg: ./monitor.py -o outfile -p 1234'
-        print
+        usage()
         return
 
-    filename = config.get('-o', 'stdout')
+    filename = config.get('-o')
     pid = config.get('-p', None)
     interval = int(config.get('-t', 1))
+    funcname = config.get('-f', 'all')
+    funclist = []
+    if funcname != 'all':
+        funclist = funcname.split(',')
 
-    #print 'outfile:%s pid:%s' % (filename, pid)
+
+    if not filename:
+        usage()
+        return
 
     global funcs
     for k, v in plugin.__dict__.iteritems():
@@ -71,32 +85,19 @@ def main():
                 if type(func) == types.FunctionType and not name.startswith('_'):
                     funcs[name] = func 
 
-
-        
-    f = sys.stdout
-    if filename and filename != 'stdout':
-        f = open(filename, 'w+')
-
-    write_header = False
-    try:
+    with open(filename, 'w+') as f:
+        write_header = False
         while True:
-            result = create(pid)
+            result = create(pid, funclist)
             head, body = split_header(result)
             if not write_header:
                 write_header = True
                 f.write(json.dumps(head, separators=(',', ':')))
                 f.write('\n')
-            #wdata = json.dumps(result, separators=(',', ':'))
             wdata = json.dumps(body, separators=(',', ':'))
-            #print len(wdata)
             f.write(wdata)
             f.write('\n')
             time.sleep(interval)
-
-    finally:
-        if filename:
-            f.close()
-
 
 
 def test():

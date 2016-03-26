@@ -88,13 +88,14 @@ def mysql(argv=None):
                 try:
                     statusval[row['Variable_name']] = int(row['Value'])
                 except:
-                    statusval[row['Variable_name']] = row['Value']
+                    pass
+                    #statusval[row['Variable_name']] = row['Value']
         keys = statusval.keys()
         keys.sort()
         
-        result.append(keys)
+        result.append(['name']+keys)
 
-        row = []
+        row = ['mysql']
         for k in keys:
             row.append(statusval[k])
         result.append(row)
