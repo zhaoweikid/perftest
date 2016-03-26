@@ -115,6 +115,7 @@ config = {
     },
     'mysql': {
         'diff':True,
+        'nodiff_fields':[],
         'format':[
             {'name':'mysql_aborted_clients', 'title':u'客户端异常关闭连接', 'fields':['Aborted_clients']},
             {'name':'mysql_conn', 'title':u'MySQL连接数', 'fields':['Connections','Aborted_connects']},
@@ -189,12 +190,13 @@ views = [
     {'title':u'数据库', 'names':[ x['name'] for x in config['mysql']['format']]},
 ]
 
+
 class MonitorData:
     def __init__(self, filename):
         self.filename = filename
         self.data = []
         self.view_fields_num = 20
-        self.view_skip_none = True
+        self.view_skip_none = False
 
         self.header = {}
         self.fields = []
@@ -251,7 +253,6 @@ class MonitorData:
         for srcname, setting in config.iteritems():
             diff = setting['diff']
             fmt = setting['format']
-
         
             if srcname not in self.fields:
                 continue
@@ -262,6 +263,7 @@ class MonitorData:
                 ret = self._format_general(srcname, self.data, setting)
 
             for f in fmt:
+                #print srcname, f['name']
                 retx = copy.deepcopy(ret) 
                 self._fields_filter(retx, f)
                 result[f['name']] = self.merge(retx)
@@ -493,14 +495,18 @@ class Drawer:
         a2 = '</body></html>'
         self.f.write(a1)
 
+        have_fields = []
+
+        for k in self.monitor.fields:
+            have_fields += [ x['name'] for x in config[k]['format']]
+
         global views
-       
         for v in views:
             head = u'<div style="height:50px;text-align:center;margin:10px;font-size:18pt;font-weigth:bold;">%s</div>'  % v['title']
             self.f.write(head.encode('utf-8'))
             names = v['names']
             for k in names:
-                if k in self.monitor.fields:
+                if k in have_fields:
                     self.draw(k)
                   
         self.f.write(a2)
